@@ -1,5 +1,10 @@
 Alpha1.1.1_UrbanLegend - Futuristic Command Center (Blue HUD)
 ----------------------------------------------------------------
+
+Copyright (c) 2025 rstevenson1237
+Licensed under CC BY-NC-ND 4.0 (Non-Commercial, No Derivatives)
+See LICENSE file for details.
+
 Quick start:
   1. Install Python 3.8+ and pygame: pip3 install pygame
   2. Unzip to your Linux files and run: python3 main.py
