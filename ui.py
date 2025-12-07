@@ -30,16 +30,16 @@ class UI:
         self.input_text = ''
         self.selected = None
         self.controlled = None
-        
+
+        # UI state (must be initialized before _generate_terrain_surface)
+        self.show_grid = False
+        self.show_zones = True
+        self.hover_tile = None
+
         # Terrain surface cache (regenerated when map changes)
         self.terrain_surface = None
         self.current_map_name = None
         self._generate_terrain_surface()
-        
-        # UI state
-        self.show_grid = False
-        self.show_zones = True
-        self.hover_tile = None
     
     def _generate_terrain_surface(self):
         """
