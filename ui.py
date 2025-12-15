@@ -1,6 +1,7 @@
 """
 User Interface for Urban Legend.
 Updated with terrain rendering and map display.
+Phase 2.1: Interactive buttons with hover/click feedback.
 """
 
 import pygame
@@ -17,13 +18,123 @@ COL_TEXT = (180, 230, 255)
 COL_HIGHLIGHT = (80, 180, 220)
 FONT_NAME = 'Consolas'
 
+# Button colors
+COL_BTN_NORMAL = (10, 30, 50)
+COL_BTN_HOVER = (20, 50, 80)
+COL_BTN_CLICK = (40, 100, 140)
+COL_BTN_BORDER = (60, 140, 200)
+COL_BTN_BORDER_HOVER = (100, 180, 240)
+
+
+class Button:
+    """
+    Interactive button with hover and click feedback.
+    
+    Attributes:
+        rect: pygame.Rect defining button bounds
+        label: Text displayed on button
+        callback: Function called when button is clicked
+        hover_state: True if mouse is over button
+        click_flash: Timer for click animation (counts down from flash duration)
+    """
+    
+    FLASH_DURATION = 0.15  # seconds
+    
+    def __init__(self, x: int, y: int, width: int, height: int, 
+                 label: str, callback=None, font=None):
+        """
+        Initialize a button.
+        
+        Args:
+            x, y: Top-left position
+            width, height: Button dimensions
+            label: Text to display
+            callback: Function to call on click (can be None)
+            font: Pygame font for rendering (uses default if None)
+        """
+        self.rect = pygame.Rect(x, y, width, height)
+        self.label = label
+        self.callback = callback
+        self.font = font
+        self.hover_state = False
+        self.click_flash = 0.0
+        self.enabled = True
+    
+    def update(self, dt: float):
+        """Update button state (animations)."""
+        if self.click_flash > 0:
+            self.click_flash = max(0, self.click_flash - dt)
+    
+    def update_hover(self, mouse_pos: tuple):
+        """Update hover state based on mouse position."""
+        self.hover_state = self.rect.collidepoint(mouse_pos) and self.enabled
+    
+    def handle_click(self, mouse_pos: tuple) -> bool:
+        """
+        Handle a click event.
+        
+        Returns:
+            True if this button was clicked, False otherwise
+        """
+        if not self.enabled:
+            return False
+            
+        if self.rect.collidepoint(mouse_pos):
+            self.click_flash = self.FLASH_DURATION
+            if self.callback:
+                self.callback()
+            return True
+        return False
+    
+    def draw(self, surface: pygame.Surface):
+        """Draw the button with appropriate visual state."""
+        # Determine colors based on state
+        if self.click_flash > 0:
+            bg_color = COL_BTN_CLICK
+            border_color = COL_BTN_BORDER_HOVER
+        elif self.hover_state:
+            bg_color = COL_BTN_HOVER
+            border_color = COL_BTN_BORDER_HOVER
+        else:
+            bg_color = COL_BTN_NORMAL
+            border_color = COL_BTN_BORDER if self.enabled else (40, 60, 80)
+        
+        # Draw button background
+        pygame.draw.rect(surface, bg_color, self.rect, border_radius=6)
+        pygame.draw.rect(surface, border_color, self.rect, 2, border_radius=6)
+        
+        # Draw label
+        if self.font:
+            text_color = COL_TEXT if self.enabled else (100, 120, 140)
+            text_surf = self.font.render(self.label, True, text_color)
+            text_x = self.rect.x + (self.rect.width - text_surf.get_width()) // 2
+            text_y = self.rect.y + (self.rect.height - text_surf.get_height()) // 2
+            surface.blit(text_surf, (text_x, text_y))
+
 
 class UI:
     """Main UI class handling rendering and input."""
     
-    def __init__(self, screen, world):
+    def __init__(self, screen, world, commander=None, parser=None,
+                 save_callback=None, load_callback=None):
+        """
+        Initialize the UI.
+        
+        Args:
+            screen: Pygame display surface
+            world: Game world instance
+            commander: Command executor for issuing orders
+            parser: NLP command parser
+            save_callback: Function to call for saving game
+            load_callback: Function to call for loading game
+        """
         self.screen = screen
         self.world = world
+        self.commander = commander
+        self.parser = parser
+        self.save_callback = save_callback
+        self.load_callback = load_callback
+        
         self.font = pygame.font.SysFont(FONT_NAME, 16)
         self.small_font = pygame.font.SysFont(FONT_NAME, 12)
         self.big = pygame.font.SysFont(FONT_NAME, 20, bold=True)
@@ -35,11 +146,181 @@ class UI:
         self.show_grid = False
         self.show_zones = True
         self.hover_tile = None
+        
+        # Initialize buttons
+        self.buttons = []
+        self._create_buttons()
 
         # Terrain surface cache (regenerated when map changes)
         self.terrain_surface = None
         self.current_map_name = None
         self._generate_terrain_surface()
+    
+    def _create_buttons(self):
+        """Create all UI buttons with their callbacks."""
+        btn_x = MAP_W + 18
+        btn_w = PANEL_W - 36
+        btn_h = 28
+        start_y = 68
+        spacing = 36
+        
+        button_configs = [
+            ('Take Control (D)', self._on_take_control),
+            ('Hold Order', self._on_hold_order),
+            ('Attack Order', self._on_attack_order),
+            ('Resupply Selected', self._on_resupply),
+            ('Pause (SPACE)', self._on_pause),
+            ('Fast (F)', self._on_fast),
+            ('Save (S)', self._on_save),
+            ('Load (L)', self._on_load),
+            ('Grid (G)', self._on_grid),
+        ]
+        
+        self.buttons = []
+        for i, (label, callback) in enumerate(button_configs):
+            btn = Button(
+                x=btn_x,
+                y=start_y + i * spacing,
+                width=btn_w,
+                height=btn_h,
+                label=label,
+                callback=callback,
+                font=self.font
+            )
+            self.buttons.append(btn)
+        
+        # Store references to specific buttons for dynamic label updates
+        self.btn_pause = self.buttons[4]
+        self.btn_fast = self.buttons[5]
+        self.btn_grid = self.buttons[8]
+    
+    def set_commander(self, commander):
+        """Set the commander reference (for deferred initialization)."""
+        self.commander = commander
+    
+    def set_parser(self, parser):
+        """Set the parser reference (for deferred initialization)."""
+        self.parser = parser
+    
+    def set_save_callback(self, callback):
+        """Set the save callback function."""
+        self.save_callback = callback
+    
+    def set_load_callback(self, callback):
+        """Set the load callback function."""
+        self.load_callback = callback
+    
+    def update(self, dt: float):
+        """Update UI state (button animations, etc.)."""
+        # Update button animations
+        for btn in self.buttons:
+            btn.update(dt)
+        
+        # Update button labels based on game state
+        self.btn_pause.label = 'Resume (SPACE)' if self.world.paused else 'Pause (SPACE)'
+        self.btn_fast.label = 'Normal (F)' if self.world.fast else 'Fast (F)'
+        self.btn_grid.label = f'Grid (G): {"ON" if self.show_grid else "OFF"}'
+        
+        # Update hover states
+        mouse_pos = pygame.mouse.get_pos()
+        for btn in self.buttons:
+            btn.update_hover(mouse_pos)
+    
+    # =========================================================================
+    # Button Callbacks
+    # =========================================================================
+    
+    def _on_take_control(self):
+        """Toggle control of selected unit or first available drone/vehicle."""
+        if self.selected is None:
+            # Try drones first, then vehicles
+            if self.world.drones:
+                d = self.world.drones[0]
+                d.controlled = not d.controlled
+                self.world.log(f'Controlling {d.name}' if d.controlled else f'Released {d.name}')
+            elif self.world.vehicles:
+                v = self.world.vehicles[0]
+                v.controlled = not v.controlled
+                self.world.log(f'Controlling {v.name}' if v.controlled else f'Released {v.name}')
+            else:
+                self.world.log('No drone or vehicle to control')
+        else:
+            if hasattr(self.selected, 'controlled'):
+                self.selected.controlled = not self.selected.controlled
+                status = 'Controlling' if self.selected.controlled else 'Released'
+                self.world.log(f'{status} {self.selected.name}')
+            else:
+                self.world.log(f'{self.selected.name} cannot be directly controlled')
+    
+    def _on_hold_order(self):
+        """Issue hold order to selected unit."""
+        if self.selected is None:
+            self.world.log('No unit selected for hold order')
+            return
+        
+        if self.commander:
+            parsed = {'action': 'hold', 'group': None, 'target_entity': self.selected.name, 'direction': None}
+            self.commander.execute(parsed)
+        elif hasattr(self.selected, 'set_order'):
+            self.selected.set_order('hold', None)
+            self.world.log(f'{self.selected.name} holding position')
+    
+    def _on_attack_order(self):
+        """Issue attack order to selected unit."""
+        if self.selected is None:
+            self.world.log('No unit selected for attack order')
+            return
+        
+        if self.commander:
+            parsed = {'action': 'attack', 'group': None, 'target_entity': self.selected.name, 'direction': None}
+            self.commander.execute(parsed)
+        else:
+            self.world.log(f'{self.selected.name} ordered to attack')
+    
+    def _on_resupply(self):
+        """Resupply selected unit."""
+        if self.selected is None:
+            self.world.log('No unit selected for resupply')
+            return
+        
+        if self.commander:
+            parsed = {'action': 'resupply', 'group': None, 'target_entity': self.selected.name, 'direction': None}
+            self.commander.execute(parsed)
+        else:
+            self.world.log(f'{self.selected.name} resupply requested')
+    
+    def _on_pause(self):
+        """Toggle pause state."""
+        self.world.paused = not self.world.paused
+        self.world.log('Paused' if self.world.paused else 'Unpaused')
+    
+    def _on_fast(self):
+        """Toggle fast mode."""
+        self.world.fast = not self.world.fast
+        self.world.log('Fast' if self.world.fast else 'Normal')
+    
+    def _on_save(self):
+        """Save the game."""
+        if self.save_callback:
+            self.save_callback()
+        else:
+            self.world.log('Save not available')
+    
+    def _on_load(self):
+        """Load the game."""
+        if self.load_callback:
+            self.load_callback()
+            self._generate_terrain_surface()  # Refresh terrain after load
+        else:
+            self.world.log('Load not available')
+    
+    def _on_grid(self):
+        """Toggle grid overlay."""
+        self.toggle_grid()
+    
+    # =========================================================================
+    # Terrain Rendering
+    # =========================================================================
     
     def _generate_terrain_surface(self):
         """
@@ -189,6 +470,10 @@ class UI:
         """Add message to world log (convenience method)."""
         self.world.log(msg)
     
+    # =========================================================================
+    # Drawing Methods
+    # =========================================================================
+    
     def draw(self):
         """Main draw method - renders entire UI."""
         # Check if map changed and regenerate terrain if needed
@@ -287,27 +572,9 @@ class UI:
         self.screen.blit(self.font.render(f'Map: {self.world.map.name}', True, COL_TEXT),
                         (MAP_W + 18, 36))
         
-        # Buttons
-        y = 68
-        labels = [
-            'Take Control (D)',
-            'Hold Order',
-            'Attack Order',
-            'Resupply Selected',
-            'Pause (SPACE)',
-            'Fast (F)',
-            'Save (S)',
-            'Load (L)',
-            f'Grid (G): {"ON" if self.show_grid else "OFF"}',
-        ]
-        
-        for lab in labels:
-            pygame.draw.rect(self.screen, (10, 30, 50),
-                           (MAP_W + 18, y, PANEL_W - 36, 28), 
-                           border_radius=6)
-            self.screen.blit(self.font.render(lab, True, COL_TEXT),
-                           (MAP_W + 26, y + 6))
-            y += 36
+        # Draw interactive buttons
+        for btn in self.buttons:
+            btn.draw(self.screen)
         
         # Selected unit summary
         self.screen.blit(self.font.render('Selected:', True, COL_TEXT),
@@ -394,6 +661,10 @@ class UI:
                            (cursor_x, HEIGHT - 42),
                            (cursor_x, HEIGHT - 18), 2)
     
+    # =========================================================================
+    # Input Handling
+    # =========================================================================
+    
     def click_map(self, pos):
         """Handle left click on map."""
         x, y = pos
@@ -432,6 +703,25 @@ class UI:
         else:
             self.selected.x, self.selected.y = x, y
             self.world.log(f'Moved {self.selected.name} to ({int(x)}, {int(y)})')
+    
+    def click_panel(self, pos) -> bool:
+        """
+        Handle click on the panel area (buttons).
+        
+        Args:
+            pos: Mouse position (x, y)
+            
+        Returns:
+            True if a button was clicked, False otherwise
+        """
+        x, y = pos
+        if x < MAP_W:
+            return False
+        
+        for btn in self.buttons:
+            if btn.handle_click(pos):
+                return True
+        return False
     
     def submit(self, parser, commander):
         """Submit typed command."""

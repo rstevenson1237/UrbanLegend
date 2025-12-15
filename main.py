@@ -1,9 +1,9 @@
 """
 Urban Legend - Main Entry Point
-Alpha 1.2.0 - Terrain System Update
+Alpha 1.2.1 - Interactive UI Update
 
 Controls:
-    Left Click  - Select unit
+    Left Click  - Select unit / Click buttons
     Right Click - Move selected unit
     Enter       - Submit command
     Space       - Pause/Unpause
@@ -22,6 +22,11 @@ Commands (type in input box):
     "drone 1 scout east"
     "tanks hold position"
     "map urban_district" - Change map
+    
+Phase 2.1 Updates:
+    - All panel buttons are now clickable
+    - Buttons show hover feedback (color change)
+    - Buttons show click feedback (brief flash)
 """
 
 import pygame
@@ -42,14 +47,30 @@ MAP_W = 960
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption('Alpha1.2.0 - Urban Legend (Terrain System)')
+    pygame.display.set_caption('Alpha1.2.1 - Urban Legend (Interactive UI)')
     clock = pygame.time.Clock()
 
-    # Initialize with default map
+    # Initialize game world
     world = World(map_name='urban_district')
     parser = CommandParser(world)
-    ui = UI(screen, world)
+    
+    # Create save/load callbacks (defined before UI so we can pass them)
+    def do_save():
+        save(world)
+    
+    def do_load():
+        load(world)
+        ui._generate_terrain_surface()
+    
+    # Initialize UI with callbacks
+    ui = UI(screen, world, save_callback=do_save, load_callback=do_load)
+    
+    # Create commander and set it on UI (circular dependency resolved via setter)
     commander = Commander(world, ui)
+    ui.set_commander(commander)
+    ui.set_parser(parser)
+    
+    # Initialize tutorial
     tutorial = Tutorial(world, ui, commander)
     
     # Track available maps for cycling
@@ -57,7 +78,6 @@ def main():
     current_map_index = 0
 
     running = True
-    mouse_down = False
 
     while running:
         dt = clock.tick(60) / 1000.0
@@ -133,7 +153,11 @@ def main():
             elif ev.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = ev.pos
                 if ev.button == 1:  # Left click
-                    if mx < MAP_W:
+                    if mx >= MAP_W:
+                        # Click on panel (buttons)
+                        ui.click_panel((mx, my))
+                    else:
+                        # Click on map
                         ui.click_map((mx, my))
                 elif ev.button == 3:  # Right click
                     if mx < MAP_W:
@@ -142,6 +166,7 @@ def main():
         # Update game state
         world.update(dt)
         tutorial.update()
+        ui.update(dt)  # Update UI (button animations, hover states)
         
         # Render
         screen.fill((2, 8, 18))
