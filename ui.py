@@ -548,16 +548,45 @@ class UI:
             self.screen.blit(text, (info_x + 5, info_y + 5 + i * 15))
     
     def _draw_selection_highlight(self):
-        """Draw highlight around selected unit/squad."""
-        if hasattr(self.selected, 'x'):
-            x, y = int(self.selected.x), int(self.selected.y)
-            
-            # Pulsing effect
-            pulse = int(pygame.time.get_ticks() / 100) % 10
-            radius = 26 + pulse // 2
-            
-            pygame.draw.circle(self.screen, COL_HIGHLIGHT,
-                             (x, y), radius, 2)
+        """Draw highlight around selected unit/squad and movement path."""
+        if not hasattr(self.selected, 'x'):
+            return
+
+        x, y = int(self.selected.x), int(self.selected.y)
+
+        # Pulsing selection circle
+        pulse = int(pygame.time.get_ticks() / 100) % 10
+        radius = 26 + pulse // 2
+        pygame.draw.circle(self.screen, COL_HIGHLIGHT, (x, y), radius, 2)
+
+        # Draw movement path if unit has one
+        if hasattr(self.selected, 'path_follower'):
+            pf = self.selected.path_follower
+            if pf.has_path() and pf.current_waypoint < len(pf.path):
+                # Draw path line
+                points = [(x, y)]
+                for i in range(pf.current_waypoint, len(pf.path)):
+                    px, py = pf.path[i]
+                    points.append((int(px), int(py)))
+
+                if len(points) > 1:
+                    pygame.draw.lines(self.screen, (60, 180, 120), False, points, 2)
+
+                    # Draw waypoint markers
+                    for px, py in points[1:]:
+                        pygame.draw.circle(self.screen, (80, 200, 140), (px, py), 4, 1)
+
+        # Draw order destination marker
+        if hasattr(self.selected, 'order') and self.selected.order[0] == 'move':
+            dest = self.selected.order[1]
+            if dest:
+                dx, dy = int(dest[0]), int(dest[1])
+                # Pulsing destination marker
+                marker_pulse = (pygame.time.get_ticks() // 300) % 2
+                marker_size = 6 + marker_pulse * 2
+                pygame.draw.rect(self.screen, (100, 220, 160),
+                               (dx - marker_size, dy - marker_size,
+                                marker_size * 2, marker_size * 2), 2)
     
     def _draw_panel(self):
         """Draw the right-side HUD panel."""

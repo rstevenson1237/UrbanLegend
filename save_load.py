@@ -16,7 +16,7 @@ def save(world, path=SAVE_FILE):
     """
     try:
         data = {
-            'version': '1.2.0',
+            'version': '1.3.0',
             'map_name': world.map.name,
             'tick': world.tick,
             'paused': world.paused,
@@ -34,6 +34,8 @@ def save(world, path=SAVE_FILE):
                 'x': s.x,
                 'y': s.y,
                 'order': list(s.order) if s.order[1] else [s.order[0], None],
+                'path': s.path_follower.path if hasattr(s, 'path_follower') else [],
+                'path_waypoint': s.path_follower.current_waypoint if hasattr(s, 'path_follower') else 0,
                 'units': []
             }
             for u in s.units:
@@ -62,6 +64,8 @@ def save(world, path=SAVE_FILE):
                 'fuel': v.fuel,
                 'vtype': v.vtype,
                 'controlled': v.controlled,
+                'path': v.path_follower.path if hasattr(v, 'path_follower') else [],
+                'path_waypoint': v.path_follower.current_waypoint if hasattr(v, 'path_follower') else 0,
             })
         
         # Save drones
@@ -101,7 +105,7 @@ def load(world, path=SAVE_FILE):
         
         # Check version compatibility
         version = data.get('version', '1.0.0')
-        if version < '1.2.0':
+        if version < '1.3.0':
             world.log(f'Warning: Loading save from older version {version}')
         
         # Load map
@@ -139,7 +143,12 @@ def load(world, path=SAVE_FILE):
                 order_type = sdata['order'][0]
                 order_payload = tuple(sdata['order'][1]) if sdata['order'][1] else None
                 s.order = (order_type, order_payload)
-            
+
+            # Restore path state
+            if sdata.get('path'):
+                s.path_follower.path = [tuple(p) for p in sdata['path']]
+                s.path_follower.current_waypoint = sdata.get('path_waypoint', 0)
+
             # Load units
             for udata in sdata.get('units', []):
                 u = Unit(udata.get('name', 'unit'), sdata['team'],
@@ -156,12 +165,18 @@ def load(world, path=SAVE_FILE):
         
         # Load vehicles
         for vdata in data.get('vehicles', []):
-            v = Vehicle(vdata['name'], vdata['team'], 
+            v = Vehicle(vdata['name'], vdata['team'],
                        vdata['x'], vdata['y'], vdata.get('vtype', 'APC'))
             v.hp = vdata.get('hp', v.hp)
             v.ammo = vdata.get('ammo', v.ammo)
             v.fuel = vdata.get('fuel', v.fuel)
             v.controlled = vdata.get('controlled', False)
+
+            # Restore path state
+            if vdata.get('path'):
+                v.path_follower.path = [tuple(p) for p in vdata['path']]
+                v.path_follower.current_waypoint = vdata.get('path_waypoint', 0)
+
             world.vehicles.append(v)
         
         # Load drones

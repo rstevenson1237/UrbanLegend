@@ -3,6 +3,7 @@ import time
 from collections import deque
 from units import Squad, Unit, Drone, Vehicle
 from map import Map, get_map, list_maps, TILE_SIZE, TerrainType, TERRAIN_PROPERTIES
+from pathfinding import Pathfinder
 
 
 class World:
@@ -23,7 +24,10 @@ class World:
         # Initialize map
         self.map = get_map(map_name)
         self.log(f'Map loaded: {self.map.name}')
-        
+
+        # Initialize pathfinder
+        self.pathfinder = Pathfinder(self.map)
+
         self.init_forces()
         self.log('World created')
     
@@ -124,6 +128,10 @@ class World:
         """
         try:
             self.map = get_map(map_name)
+
+            # Reset pathfinder for new map
+            self.pathfinder = Pathfinder(self.map)
+
             self.squads.clear()
             self.drones.clear()
             self.vehicles.clear()
@@ -238,5 +246,11 @@ class World:
             if (zone_x <= drone.x < zone_x + zone_w and
                 zone_y <= drone.y < zone_y + zone_h):
                 units_in_zone.append(drone)
-        
+
         return units_in_zone
+
+    def find_path(self, start_x: float, start_y: float,
+                  goal_x: float, goal_y: float,
+                  is_vehicle: bool = False) -> list:
+        """Find a path between two points using A* pathfinding."""
+        return self.pathfinder.find_path(start_x, start_y, goal_x, goal_y, is_vehicle)

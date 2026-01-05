@@ -1,6 +1,6 @@
 """
 Urban Legend - Main Entry Point
-Alpha 1.2.1 - Interactive UI Update
+Alpha 1.3.0 - Pathfinding Update
 
 Controls:
     Left Click  - Select unit / Click buttons

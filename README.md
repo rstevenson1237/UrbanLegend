@@ -1,14 +1,24 @@
-# Urban Legend - Alpha 1.2.0 (Terrain System)
+# Urban Legend - Alpha 1.3.0 (Pathfinding System)
 
 A futuristic squad command game with natural language controls and tactical terrain.
 
-**Copyright (c) 2025 rstevenson1237**  
-Licensed under CC BY-NC-ND 4.0 (Non-Commercial, No Derivatives)  
+**Copyright (c) 2025 rstevenson1237**
+Licensed under CC BY-NC-ND 4.0 (Non-Commercial, No Derivatives)
 See LICENSE file for details.
 
 ---
 
-## What's New in 1.2.0
+## What's New in 1.3.0
+
+### Pathfinding System
+- **A* pathfinding** - Units navigate around obstacles intelligently
+- **Terrain-aware routing** - Paths prefer roads, avoid impassable terrain
+- **Path visualization** - See planned route when unit selected
+- **Vehicle routing** - Vehicles respect road and passability constraints
+- **Path smoothing** - Natural movement with optimized waypoints
+- **Performance caching** - Fast path recomputation for moving units
+
+### Previous Updates (1.2.0)
 
 ### Terrain System
 - **Tile-based map** with multiple terrain types
@@ -97,7 +107,8 @@ Large open area with minimal cover. Tests maneuvering and use of limited cover p
 urban_legend/
 ├── main.py           # Entry point
 ├── world.py          # Game state & logic
-├── map.py            # NEW: Terrain system
+├── map.py            # Terrain system
+├── pathfinding.py    # NEW: A* pathfinding
 ├── units.py          # Unit classes with cover
 ├── nlp_parser.py     # Command parser
 ├── commander.py      # Command executor
@@ -146,7 +157,7 @@ urban_legend/
 ## Development Roadmap
 
 - [x] Phase 1.1: Map & Terrain System
-- [ ] Phase 1.2: Pathfinding (A*)
+- [x] Phase 1.2: Pathfinding (A*)
 - [ ] Phase 1.3: Enhanced Unit Abilities
 - [ ] Phase 1.4: Advanced Enemy AI
 - [ ] Phase 1.5: Mission & Objective System

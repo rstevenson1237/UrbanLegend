@@ -5,6 +5,7 @@ Updated with cover mechanics and terrain-aware movement.
 
 import random
 import math
+from pathfinding import PathFollower
 
 def clamp(v, a, b):
     return max(a, min(b, v))
@@ -86,10 +87,13 @@ class Squad:
         self.units = []
         self.order = ('idle', None)
         self.engaged = False
-        
+
         # Movement properties
         self.base_speed = 26
         self.current_speed = self.base_speed
+
+        # Pathfinding
+        self.path_follower = PathFollower()
     
     def add_unit(self, u):
         self.units.append(u)
@@ -100,7 +104,10 @@ class Squad:
         return abs(px - self.x) < 28 and abs(py - self.y) < 28
     
     def set_order(self, t, payload=None):
+        """Set a new order, clearing any existing path."""
         self.order = (t, payload)
+        if t != 'move':
+            self.path_follower.clear()
     
     def center_update(self):
         """Recalculate squad center position based on living units."""
@@ -128,54 +135,66 @@ class Squad:
         self.center_update()
     
     def _process_movement(self, dt, world):
-        """Process movement order with terrain awareness."""
-        tx, ty = self.order[1]
+        """Process movement order using pathfinding."""
+        if self.order[0] != 'move' or not self.order[1]:
+            return
+
+        goal_x, goal_y = self.order[1]
+
+        # If no active path, compute one
+        if not self.path_follower.has_path():
+            path = world.find_path(self.x, self.y, goal_x, goal_y, is_vehicle=False)
+            if path:
+                self.path_follower.set_path(path)
+            else:
+                # No path found, cancel order
+                world.log(f'{self.name}: No path to destination')
+                self.order = ('hold', None)
+                return
+
+        # Get next waypoint
+        waypoint = self.path_follower.update(self.x, self.y)
+
+        if waypoint is None:
+            # Path complete
+            self.order = ('hold', None)
+            self.path_follower.clear()
+            return
+
+        # Move toward waypoint
+        tx, ty = waypoint
         vx = tx - self.x
         vy = ty - self.y
         d = math.hypot(vx, vy)
-        
-        if d > 4:
+
+        if d > 2:
             nx, ny = vx / d, vy / d
-            
+
             # Get movement cost from terrain
             movement_cost = world.map.get_movement_cost(self.x, self.y)
             effective_speed = self.base_speed * movement_cost
-            
-            # Calculate proposed new position
-            new_x = self.x + nx * effective_speed * dt
-            new_y = self.y + ny * effective_speed * dt
-            
-            # Check if new position is passable
-            if world.map.is_passable(new_x, new_y, is_vehicle=False):
-                self.x = new_x
-                self.y = new_y
-                self.current_speed = effective_speed
-                
-                # Move individual units
-                for u in self.units:
-                    if u.alive:
-                        # Individual unit movement with slight randomness
-                        unit_new_x = u.x + nx * effective_speed * dt + random.uniform(-2, 2)
-                        unit_new_y = u.y + ny * effective_speed * dt + random.uniform(-2, 2)
-                        
-                        # Only move if passable
-                        if world.map.is_passable(unit_new_x, unit_new_y, is_vehicle=False):
-                            u.x = unit_new_x
-                            u.y = unit_new_y
-            else:
-                # Try to find alternative path (simple obstacle avoidance)
-                for angle_offset in [0.3, -0.3, 0.6, -0.6, 0.9, -0.9]:
-                    alt_nx = nx * math.cos(angle_offset) - ny * math.sin(angle_offset)
-                    alt_ny = nx * math.sin(angle_offset) + ny * math.cos(angle_offset)
-                    alt_x = self.x + alt_nx * effective_speed * dt
-                    alt_y = self.y + alt_ny * effective_speed * dt
-                    
-                    if world.map.is_passable(alt_x, alt_y, is_vehicle=False):
-                        self.x = alt_x
-                        self.y = alt_y
-                        break
-        else:
-            self.order = ('hold', None)
+
+            # Move squad center
+            self.x += nx * effective_speed * dt
+            self.y += ny * effective_speed * dt
+            self.current_speed = effective_speed
+
+            # Move individual units toward squad center with slight variation
+            for u in self.units:
+                if u.alive:
+                    target_x = self.x + (u.x - self.x) * 0.9 + random.uniform(-1, 1)
+                    target_y = self.y + (u.y - self.y) * 0.9 + random.uniform(-1, 1)
+
+                    unit_vx = target_x - u.x + nx * effective_speed * dt
+                    unit_vy = target_y - u.y + ny * effective_speed * dt
+
+                    new_x = u.x + unit_vx * 0.5
+                    new_y = u.y + unit_vy * 0.5
+
+                    # Check passability for individual unit
+                    if world.map.is_passable(new_x, new_y, is_vehicle=False):
+                        u.x = new_x
+                        u.y = new_y
     
     def _check_combat(self, world):
         """Check for nearby enemies and resolve combat."""
@@ -372,9 +391,12 @@ class Vehicle:
         self.fuel = 100
         self.controlled = False
         self.cooldown = 0.0
-        
+
         # Movement state
         self.target_pos = None
+
+        # Pathfinding
+        self.path_follower = PathFollower()
     
     def receive_damage(self, amount: float, is_explosive: bool = False):
         """Apply damage to vehicle with armor reduction."""
@@ -413,28 +435,44 @@ class Vehicle:
         return hit
     
     def move_to(self, tx, ty, world, dt):
-        """Move towards target position, respecting vehicle passability."""
-        vx = tx - self.x
-        vy = ty - self.y
+        """Move towards target using pathfinding."""
+        # If no path or target changed, compute new path
+        if not self.path_follower.has_path():
+            path = world.find_path(self.x, self.y, tx, ty, is_vehicle=True)
+            if path:
+                self.path_follower.set_path(path)
+            else:
+                return False
+
+        # Get next waypoint
+        waypoint = self.path_follower.update(self.x, self.y)
+
+        if waypoint is None:
+            self.target_pos = None
+            self.path_follower.clear()
+            return False
+
+        # Move toward waypoint
+        wx, wy = waypoint
+        vx = wx - self.x
+        vy = wy - self.y
         d = math.hypot(vx, vy)
-        
+
         if d > 4:
             nx, ny = vx / d, vy / d
-            
-            # Get movement cost (vehicles get road bonus)
+
             movement_cost = world.map.get_movement_cost(self.x, self.y)
             effective_speed = self.speed * movement_cost
-            
+
             new_x = self.x + nx * effective_speed * dt
             new_y = self.y + ny * effective_speed * dt
-            
-            # Check vehicle passability
+
             if world.map.is_passable(new_x, new_y, is_vehicle=True):
                 self.x = new_x
                 self.y = new_y
                 self.fuel = max(0, self.fuel - dt * 0.25)
                 return True
-        
+
         return False
     
     def update(self, dt, world=None):
