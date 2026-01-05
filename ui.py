@@ -433,7 +433,7 @@ class UI:
             y = zone['y'] * TILE_SIZE
             w = zone['width'] * TILE_SIZE
             h = zone['height'] * TILE_SIZE
-            
+
             # Zone color based on type
             if zone['type'] == 'spawn':
                 if zone.get('team') == 'player':
@@ -451,21 +451,36 @@ class UI:
             else:
                 color = (60, 60, 60, 80)
                 border_color = (100, 100, 100)
-            
+
             # Draw semi-transparent zone fill
             zone_surf = pygame.Surface((w, h), pygame.SRCALPHA)
             zone_surf.fill(color)
             self.terrain_surface.blit(zone_surf, (x, y))
-            
+
             # Draw border
             pygame.draw.rect(self.terrain_surface, border_color,
                            (x, y, w, h), 2)
-            
+
             # Zone label
             zone_name = zone.get('name', zone_id)
             label = self.small_font.render(zone_name, True, border_color)
             self.terrain_surface.blit(label, (x + 4, y + 4))
-    
+
+    def draw_units(self):
+        """Draw all game entities (squads, vehicles, drones)."""
+        # Draw squads with team colors
+        for s in self.world.squads:
+            color = (80, 220, 180) if s.team == 'player' else (220, 100, 100)
+            s.draw(self.screen, color)
+
+        # Draw vehicles
+        for v in self.world.vehicles:
+            v.draw(self.screen)
+
+        # Draw drones
+        for d in self.world.drones:
+            d.draw(self.screen)
+
     def log(self, msg: str):
         """Add message to world log (convenience method)."""
         self.world.log(msg)
@@ -475,30 +490,33 @@ class UI:
     # =========================================================================
     
     def draw(self):
-        """Main draw method - renders entire UI."""
+        """Main draw method - renders entire UI in correct layer order."""
         # Check if map changed and regenerate terrain if needed
         if self.world.map.name != self.current_map_name:
             self._generate_terrain_surface()
-        
-        # Draw terrain
+
+        # Layer 1: Draw terrain (base layer)
         self.screen.blit(self.terrain_surface, (0, 0))
-        
-        # Draw grid overlay if enabled
+
+        # Layer 2: Draw grid overlay if enabled (on top of terrain, below units)
         if self.show_grid:
             self._draw_grid()
-        
-        # Draw hover tile info
+
+        # Layer 3: Draw all units (squads, vehicles, drones)
+        self.draw_units()
+
+        # Layer 4: Draw hover tile info
         if self.hover_tile:
             self._draw_hover_info()
-        
-        # Draw selection highlight
+
+        # Layer 5: Draw selection highlight (on top of units)
         if self.selected:
             self._draw_selection_highlight()
-        
-        # Draw right panel (HUD)
+
+        # Layer 6: Draw right panel (HUD) - always on top
         self._draw_panel()
-        
-        # Draw command input box
+
+        # Layer 7: Draw command input box
         self._draw_input_box()
     
     def _draw_grid(self):
@@ -695,20 +713,41 @@ class UI:
     # =========================================================================
     
     def click_map(self, pos):
-        """Handle left click on map."""
+        """Handle left click on map with improved hit detection."""
         x, y = pos
-        
-        # Check squads
-        for s in self.world.squads + self.world.vehicles + self.world.drones:
+
+        # Check squads - use larger hit area matching visual bounds
+        for s in self.world.squads:
             if hasattr(s, 'contains_point') and s.contains_point(x, y):
                 self.selected = s
                 self.world.log(f'Selected {s.name}')
                 return True
-            if hasattr(s, 'x') and abs(x - s.x) < 16 and abs(y - s.y) < 12:
+            # Fallback to radius check
+            if hasattr(s, 'x') and abs(x - s.x) < 28 and abs(y - s.y) < 28:
                 self.selected = s
                 self.world.log(f'Selected {s.name}')
                 return True
-        
+
+        # Check vehicles with appropriate bounds
+        for v in self.world.vehicles:
+            # Match vehicle rect size from draw method
+            rect_w = 20 if v.vtype == 'APC' else 24
+            rect_h = 12 if v.vtype == 'APC' else 14
+            if abs(x - v.x) < rect_w and abs(y - v.y) < rect_h:
+                self.selected = v
+                self.world.log(f'Selected {v.name}')
+                return True
+
+        # Check drones with appropriate bounds
+        for d in self.world.drones:
+            # Match drone triangle size (6 pixel radius from center)
+            if abs(x - d.x) < 12 and abs(y - d.y) < 12:
+                self.selected = d
+                self.world.log(f'Selected {d.name}')
+                return True
+
+        # Click on empty space deselects
+        self.selected = None
         return False
     
     def right_click_map(self, pos):

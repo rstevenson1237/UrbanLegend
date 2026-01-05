@@ -168,27 +168,10 @@ def main():
         tutorial.update()
         ui.update(dt)  # Update UI (button animations, hover states)
         
-        # Render
+        # Render - UI handles all drawing in correct order
         screen.fill((2, 8, 18))
         pygame.draw.rect(screen, (6, 14, 30), (0, 0, MAP_W, HEIGHT))
-        
-        # Draw squads with team colors
-        for s in world.squads:
-            color = (80, 220, 180) if s.team == 'player' else (220, 100, 100)
-            s.draw(screen, color)
-        
-        # Draw vehicles
-        for v in world.vehicles:
-            v.draw(screen)
-        
-        # Draw drones
-        for d in world.drones:
-            d.draw(screen)
-        
-        # Draw UI overlay
         ui.draw()
-        
-        # Update display
         pygame.display.flip()
 
     pygame.quit()

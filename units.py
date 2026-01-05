@@ -263,25 +263,31 @@ class Squad:
         return sum(u.cover_bonus for u in alive) / len(alive)
     
     def draw(self, screen, color):
-        """Draw the squad and its units."""
+        """Draw the squad and its units with enhanced visual differentiation."""
         import pygame
-        
+
         # Draw individual units
         for u in self.units:
             u.draw(screen, color)
-        
+
         # Draw squad selection circle (if any units alive)
         if self.units:
             alive_count = len([u for u in self.units if u.alive])
             if alive_count > 0:
-                # Outer circle for squad bounds
-                pygame.draw.circle(screen, color, (int(self.x), int(self.y)), 
-                                 22, 1)
-                
-                # Squad name label
+                # Outer circle for squad bounds - thicker for player units
+                thickness = 2 if self.team == 'player' else 1
+                pygame.draw.circle(screen, color, (int(self.x), int(self.y)),
+                                 22, thickness)
+
+                # Squad name label with unit count and background for readability
                 font = pygame.font.SysFont('Consolas', 10)
-                label = font.render(self.name, True, color)
-                screen.blit(label, (int(self.x) - 20, int(self.y) - 32))
+                label = font.render(f'{self.name} ({alive_count})', True, color)
+
+                # Dark background behind text
+                bg_rect = pygame.Rect(int(self.x) - 25, int(self.y) - 36,
+                                    label.get_width() + 4, label.get_height() + 2)
+                pygame.draw.rect(screen, (10, 20, 30), bg_rect)
+                screen.blit(label, (int(self.x) - 23, int(self.y) - 35))
 
 
 class Drone:
@@ -348,16 +354,27 @@ class Drone:
     
     def draw(self, surf):
         import pygame
-        
+
         col = (140, 220, 240) if self.team == 'player' else (240, 160, 120)
-        
+
+        # Pulsing size effect for drones
+        pulse = (pygame.time.get_ticks() // 200) % 3
+        size = 6 + pulse
+
         # Triangle shape for drone
         pygame.draw.polygon(surf, col, [
-            (self.x, self.y - 6),
-            (self.x - 6, self.y + 6),
-            (self.x + 6, self.y + 6)
+            (self.x, self.y - size),
+            (self.x - size, self.y + size),
+            (self.x + size, self.y + size)
         ])
-        
+
+        # Outer glow effect
+        pygame.draw.polygon(surf, col, [
+            (self.x, self.y - size - 2),
+            (self.x - size - 2, self.y + size + 2),
+            (self.x + size + 2, self.y + size + 2)
+        ], 1)
+
         # Name label
         font = pygame.font.SysFont('Consolas', 10)
         label = font.render(self.name, True, col)
@@ -488,26 +505,37 @@ class Vehicle:
     
     def draw(self, surf):
         import pygame
-        
+
         col = (100, 200, 230) if self.team == 'player' else (220, 100, 100)
-        
-        # Rectangle for vehicle
-        rect_w = 20 if self.vtype == 'APC' else 24
-        rect_h = 12 if self.vtype == 'APC' else 14
-        pygame.draw.rect(surf, col, 
-                        (int(self.x) - rect_w // 2, int(self.y) - rect_h // 2, 
-                         rect_w, rect_h))
-        
+
+        # Different shapes for APC vs Tank
+        if self.vtype == 'Tank':
+            # Tank: larger rectangle with turret indicator
+            rect_w, rect_h = 24, 14
+            pygame.draw.rect(surf, col,
+                           (int(self.x) - rect_w // 2, int(self.y) - rect_h // 2,
+                            rect_w, rect_h))
+            # Turret (circle on top)
+            pygame.draw.circle(surf, col, (int(self.x), int(self.y)), 6)
+            pygame.draw.circle(surf, (40, 50, 60), (int(self.x), int(self.y)), 4)
+        else:
+            # APC: rounded rectangle shape
+            rect_w, rect_h = 20, 12
+            pygame.draw.rect(surf, col,
+                           (int(self.x) - rect_w // 2, int(self.y) - rect_h // 2,
+                            rect_w, rect_h),
+                           border_radius=3)
+
         # Name label
         font = pygame.font.SysFont('Consolas', 10)
         label = font.render(self.name, True, col)
         surf.blit(label, (int(self.x) - 18, int(self.y) - 20))
-        
+
         # Health bar
         bar_width = 20
         bar_height = 3
         hp_pct = self.hp / self.max_hp
-        
+
         pygame.draw.rect(surf, (60, 60, 60),
                         (int(self.x) - bar_width // 2, int(self.y) + rect_h // 2 + 2,
                          bar_width, bar_height))
